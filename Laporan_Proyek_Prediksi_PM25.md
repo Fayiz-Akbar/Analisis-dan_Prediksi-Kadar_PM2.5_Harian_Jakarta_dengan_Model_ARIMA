@@ -57,11 +57,10 @@ df.duplicated().sum()
 
 ### Hasil Pemeriksaan:
 
-- **Jumlah total baris:** 4672
-- **Jumlah kolom:** 8
-- **Nilai kosong (NaN)** pada kolom `pm25`: 1416 baris
+- **Jumlah total baris:** 5173
+- **Jumlah kolom:** 11
+- **Nilai kosong (NaN)** pada kolom `pm25`: 4027
 - **Data duplikat:** 0
-- **Outlier:** Terdapat nilai PM2.5 tinggi (>150 µg/m³), namun tidak dihapus karena representatif terhadap polusi ekstrem di Jakarta.
 
 ### Uraian Fitur Dataset
 
