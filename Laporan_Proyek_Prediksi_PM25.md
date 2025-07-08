@@ -10,22 +10,25 @@ Dengan prediksi PM2.5, kita dapat:
 - Menyediakan informasi berbasis data bagi sistem monitoring kualitas udara
 
 > Referensi:
-> - IQAir, “Jakarta Air Quality Index,” 2024. [Online]. Available: https://www.iqair.com/indonesia/jakarta
+> - IQAir, “Jakarta Air Quality Index,” 2024. [Online]. Available: https://www.iqair.com/indonesia/jakarta  
 > - WHO, “Ambient (outdoor) air pollution,” [Online]. Available: https://www.who.int/news-room/fact-sheets/detail/ambient-(outdoor)-air-quality-and-health
+
+---
 
 ## Business Understanding
 
 ### Problem Statements
 
-1. Bagaimana memprediksi konsentrasi PM2.5 harian di Jakarta secara akurat?
-2. Apakah model berbasis data historis dapat digunakan untuk membantu masyarakat menghindari polusi berlebih?
+1. Bagaimana memprediksi konsentrasi PM2.5 harian di Jakarta secara akurat?  
+2. Apakah model berbasis data historis dapat digunakan untuk membantu masyarakat menghindari polusi berlebih?  
 3. Sejauh apa akurasi model ARIMA untuk prediksi PM2.5?
 
 ### Goals
 
-1. Membangun model forecasting untuk memprediksi nilai PM2.5 harian berdasarkan data sebelumnya.
-2. Mengevaluasi kinerja model menggunakan metrik MAE dan RMSE.
-3. Menyediakan hasil prediksi dalam bentuk grafik dan tabel untuk pemantauan.
+1. Membangun model forecasting untuk memprediksi nilai PM2.5 harian berdasarkan data sebelumnya.  
+2. Mengevaluasi kinerja model menggunakan metrik MAE dan RMSE.  
+3. Menyediakan hasil prediksi dalam bentuk grafik dan tabel untuk pemantauan.  
+4. Memberikan peringatan dini dalam bentuk visualisasi grafik jika kadar PM2.5 melebihi ambang batas aman agar masyarakat dapat merencanakan aktivitas luar ruangannya.
 
 ### Solution Statements
 
@@ -40,13 +43,16 @@ Alternatif solusi:
 
 Namun, dalam proyek ini difokuskan pada ARIMA sebagai baseline untuk efisiensi dan interpretabilitas.
 
+---
+
 ## Data Understanding
 
 ### Sumber Dataset
-Dataset digunakan dari Kaggle:
+
+Dataset digunakan dari Kaggle:  
 [https://www.kaggle.com/datasets/senadu34/air-quality-index-in-jakarta-2010-2021?select=ispu_dki1.csv](https://www.kaggle.com/datasets/senadu34/air-quality-index-in-jakarta-2010-2021?select=ispu_dki1.csv)
 
-### Struktur Dataset
+### Pemeriksaan Struktur Data
 
 ```python
 df.info()
@@ -57,10 +63,10 @@ df.duplicated().sum()
 
 ### Hasil Pemeriksaan:
 
-- **Jumlah total baris:** 5173
-- **Jumlah kolom:** 11
-- **Nilai kosong (NaN)** pada kolom `pm25`: 4027
-- **Data duplikat:** 0
+- Jumlah total baris: 5173  
+- Jumlah kolom: 11  
+- Nilai kosong (`NaN`) pada kolom `pm25`: 4027  
+- Data duplikat: 0  
 
 ### Uraian Fitur Dataset
 
@@ -76,71 +82,107 @@ df.duplicated().sum()
 | `kategori` | Kategori kualitas udara berdasarkan ISPU |
 | `stasiun` | Nama stasiun pengukuran (misal: DKI1 - Bundaran HI) |
 
+---
+
 ## Data Preparation
 
-### Langkah yang dilakukan:
-- Parsing kolom `tanggal` menjadi `datetime`
-- Set `tanggal` sebagai indeks time-series
-- Hapus baris dengan `pm25` kosong (NaN)
-- Resample data ke format harian (`daily mean`)
-- Tambahkan fitur musiman:
-  - `dayofweek` (Senin–Minggu)
-  - `month`
-  - `is_weekend`
+Langkah-langkah preprocessing:
 
-### Splitting Data:
+1. Parsing kolom `tanggal` ke format `datetime`
+2. Set `tanggal` sebagai index untuk analisis time-series
+3. Hapus nilai `pm25` yang kosong (NaN)
+4. Resampling data ke format harian menggunakan rata-rata harian
+5. Tambahkan fitur musiman:
+   - `dayofweek`: hari dalam minggu
+   - `month`: bulan
+   - `is_weekend`: akhir pekan atau bukan
+
+### Filter Data Periode
+
+Data difokuskan pada rentang 1 Januari 2023 hingga 28 Februari 2025.  
+Alasannya:
+- Data sebelum 2023 mengandung banyak nilai kosong, terutama pada tahun 2022
+- Data terbaru cenderung lebih relevan terhadap kondisi kualitas udara pasca pandemi dan regulasi emisi baru
+
+### Splitting Data
+
 ```python
 train_size = int(len(pm25_series) * 0.8)
 train = pm25_series[:train_size]
 test = pm25_series[train_size:]
 ```
 
-Data dibagi menjadi:
-- **Train**: 80% data
-- **Test**: 20% data
-- Metode ini menjaga urutan waktu (tidak diacak) agar model ARIMA dapat bekerja optimal.
+- Train: 80%  
+- Test: 20%  
+- Tidak dilakukan pengacakan agar urutan time series tetap terjaga.
+
+---
 
 ## Modeling
 
 ### Model: ARIMA (AutoRegressive Integrated Moving Average)
 
+Model ARIMA terdiri dari tiga komponen utama:
+- **AR (AutoRegressive)**: menggunakan data masa lalu (lag) sebagai input untuk prediksi masa depan
+- **I (Integrated)**: melakukan differencing agar data menjadi stasioner
+- **MA (Moving Average)**: memodelkan error dari model sebelumnya
+
+### Parameter ARIMA(5,1,0)
+
+- `p = 5`: Menggunakan 5 nilai lag sebelumnya
+- `d = 1`: Differencing satu kali agar data stasioner
+- `q = 0`: Tidak menggunakan rata-rata kesalahan sebelumnya
+
+Parameter ini dipilih karena hasil eksperimen menunjukkan kombinasi ini memberikan hasil prediksi yang paling stabil.
+
 ```python
-from statsmodels.tsa.arima.model import ARIMA
 model = ARIMA(train, order=(5,1,0))
 model_fit = model.fit()
 ```
 
-### Penjelasan ARIMA(5,1,0):
-- `p = 5`: Menggunakan 5 nilai lag sebelumnya
-- `d = 1`: Melakukan differencing 1x untuk membuat data stasioner
-- `q = 0`: Tidak menggunakan moving average
-
-### Kelebihan:
-- Simpel, cocok untuk dataset kecil
-- Bisa diinterpretasi
-- Tidak membutuhkan banyak fitur
-
-### Kekurangan:
-- Tidak cocok untuk banyak variabel
-- Tidak menangkap seasonality (tidak seperti SARIMA)
+---
 
 ## Evaluation
 
-### Evaluasi dengan MAE dan RMSE
+### Evaluasi Model
+
+Evaluasi menggunakan dua metrik:
+- **MAE (Mean Absolute Error)**: rata-rata kesalahan absolut
+- **RMSE (Root Mean Squared Error)**: penalti lebih tinggi untuk error besar
+
+### Hasil Evaluasi
+
+- **MAE**: 28.31  
+- **RMSE**: 33.36
+
+### Formula RMSE:
+
+$$
+RMSE = \sqrt{\frac{1}{n} \sum_{i=1}^{n}(y_i - \hat{y}_i)^2}
+$$
+
+Keterangan:
+- \( y_i \): nilai aktual  
+- \( \hat{y}_i \): nilai prediksi  
+- \( n \): jumlah data
+
+### Visualisasi Hasil
+
+Grafik prediksi vs aktual menunjukkan bahwa model mengikuti tren secara cukup akurat:
+
 ```python
-mae = mean_absolute_error(df_eval['actual'], df_eval['predicted'])
-rmse = np.sqrt(mean_squared_error(df_eval['actual'], df_eval['predicted']))
+plt.plot(test, label='Aktual')
+plt.plot(forecast, label='Prediksi')
 ```
 
-### Hasil:
-- **MAE**: Mean Absolute Error — rata-rata kesalahan absolut
-- **RMSE**: Root Mean Squared Error — penalti lebih besar untuk kesalahan besar
-- Nilai yang kecil menunjukkan model prediktif baik
-
-### Visualisasi
-Grafik perbandingan antara hasil prediksi vs aktual ditampilkan untuk validasi visual performa model.
+---
 
 ## Penutup
 
-Model ARIMA berhasil membentuk baseline yang cukup baik untuk prediksi kadar PM2.5 harian di Jakarta. Dengan akurasi yang memadai, hasil ini bisa digunakan untuk mendukung pengambilan keputusan terkait kesehatan publik dan kebijakan lingkungan.
+Model ARIMA(5,1,0) memberikan performa yang cukup baik untuk memprediksi kadar PM2.5 harian di Jakarta. Hasil prediksi ini divisualisasikan dalam bentuk grafik yang bisa digunakan untuk sistem peringatan dini jika kadar PM2.5 mendekati atau melebihi ambang batas aman.
 
+Prediksi ini diharapkan dapat:
+- Membantu masyarakat menghindari aktivitas luar saat polusi tinggi
+- Menjadi dasar pertimbangan pemerintah untuk membuat kebijakan lingkungan
+
+Dengan hasil evaluasi yang cukup baik dan proses yang transparan, model ini dapat digunakan sebagai baseline yang kuat dalam pemantauan kualitas udara.
