@@ -1,4 +1,3 @@
-
 # Laporan Proyek Machine Learning Prediksi Kadar PM2.5 Harian Jakarta dengan Model ARIMA - Fayiz Akbar Daifullah
 
 ## Domain Proyek
@@ -11,7 +10,7 @@ Dengan prediksi PM2.5, kita dapat:
 - Menyediakan informasi berbasis data bagi sistem monitoring kualitas udara
 
 > Referensi:
-> - IQAir, “Jakarta Air Quality Index,” 2024. [Online]. Available: https://www.iqair.com/indonesia/jakarta  
+> - IQAir, “Jakarta Air Quality Index,” 2024. [Online]. Available: https://www.iqair.com/indonesia/jakarta
 > - WHO, “Ambient (outdoor) air pollution,” [Online]. Available: https://www.who.int/news-room/fact-sheets/detail/ambient-(outdoor)-air-quality-and-health
 
 ## Business Understanding
@@ -43,20 +42,11 @@ Namun, dalam proyek ini difokuskan pada ARIMA sebagai baseline untuk efisiensi d
 
 ## Data Understanding
 
-Dataset diambil dari Open Data Jakarta: https://www.kaggle.com/datasets/senadu34/air-quality-index-in-jakarta-2010-2021?select=ispu_dki1.csv, khususnya data ISPU dari stasiun DKI1 (Bundaran HI).
+### Sumber Dataset
+Dataset digunakan dari Kaggle:
+[https://www.kaggle.com/datasets/senadu34/air-quality-index-in-jakarta-2010-2021?select=ispu_dki1.csv](https://www.kaggle.com/datasets/senadu34/air-quality-index-in-jakarta-2010-2021?select=ispu_dki1.csv)
 
-### Fitur utama:
-- `tanggal` : waktu pengambilan data
-- `pm25` : konsentrasi partikel PM2.5
-- `pm10`, `so2`, `co`, `o3`, `no2` : data polutan lainnya
-- `kategori` : klasifikasi kualitas udara
-- `stasiun` : nama lokasi pengukuran
-
-Dataset mencakup data dari tahun 2010–2025, namun karena keterbatasan kelengkapan, data yang digunakan untuk model adalah dari 2023–2025.
-
-### Pemeriksaan Kondisi Data
-
-Untuk memahami kondisi data, dilakukan pemeriksaan struktur dan kualitas data sebagai berikut:
+### Struktur Dataset
 
 ```python
 df.info()
@@ -65,125 +55,93 @@ df.isnull().sum()
 df.duplicated().sum()
 ```
 
-Hasil pemeriksaan:
-- Jumlah total baris: 4672
-- Jumlah kolom: 8
-- Nilai kosong (`NaN`) pada kolom `pm25`: 1416 baris
-- Duplikasi data: 0 baris
-- Outlier: Terdapat nilai PM2.5 tinggi (>150) yang mencerminkan polusi ekstrem. Tidak dihapus karena representatif kondisi nyata Jakarta.
+### Hasil Pemeriksaan:
 
-### Data yang digunakan:
-- Periode: 1 Januari 2023 – 28 Februari 2025
-- Setelah pembersihan data: 790 baris data PM2.5 harian
+- **Jumlah total baris:** 4672
+- **Jumlah kolom:** 8
+- **Nilai kosong (NaN)** pada kolom `pm25`: 1416 baris
+- **Data duplikat:** 0
+- **Outlier:** Terdapat nilai PM2.5 tinggi (>150 µg/m³), namun tidak dihapus karena representatif terhadap polusi ekstrem di Jakarta.
 
-### Visualisasi dan EDA
+### Uraian Fitur Dataset
 
-Kami melakukan:
-- Plot tren waktu PM2.5 dari 2023–2025
-- Rata-rata PM2.5 per hari dalam seminggu (dayofweek)
-- Rata-rata PM2.5 per bulan (seasonality)
-- Statistik deskriptif PM2.5
+| Fitur     | Deskripsi |
+|-----------|-----------|
+| `tanggal` | Tanggal pengukuran kualitas udara |
+| `pm25`    | Kadar partikel PM2.5 |
+| `pm10`    | Kadar partikel PM10 |
+| `so2`     | Kandungan sulfur dioksida |
+| `co`      | Kandungan karbon monoksida |
+| `o3`      | Kandungan ozon |
+| `no2`     | Kandungan nitrogen dioksida |
+| `kategori` | Kategori kualitas udara berdasarkan ISPU |
+| `stasiun` | Nama stasiun pengukuran (misal: DKI1 - Bundaran HI) |
 
 ## Data Preparation
 
-Langkah-langkah utama:
-- Mengonversi kolom `tanggal` ke format datetime
-- Menjadikan `tanggal` sebagai indeks time-series
-- Menghapus data kosong pada kolom `pm25`
-- Melakukan resampling ke rata-rata harian
-- Menambahkan fitur musiman:
-  - `dayofweek`: 0 = Senin, ..., 6 = Minggu
-  - `month`: bulan 1–12
-  - `is_weekend`: 1 jika Sabtu/Minggu
+### Langkah yang dilakukan:
+- Parsing kolom `tanggal` menjadi `datetime`
+- Set `tanggal` sebagai indeks time-series
+- Hapus baris dengan `pm25` kosong (NaN)
+- Resample data ke format harian (`daily mean`)
+- Tambahkan fitur musiman:
+  - `dayofweek` (Senin–Minggu)
+  - `month`
+  - `is_weekend`
 
-### Contoh kode:
-
+### Splitting Data:
 ```python
-df['tanggal'] = pd.to_datetime(df['tanggal'], errors='coerce')
-df_pm25 = df[['tanggal', 'pm25']].dropna()
-df_pm25.set_index('tanggal', inplace=True)
-df_pm25 = df_pm25.resample('D').mean()
-
-data_fe = df_pm25.copy()
-data_fe['dayofweek'] = data_fe.index.dayofweek
-data_fe['month'] = data_fe.index.month
-data_fe['is_weekend'] = data_fe['dayofweek'].apply(lambda x: 1 if x >= 5 else 0)
-```
-
-### Data Splitting:
-
-```python
-pm25_series = data_fe['pm25']
 train_size = int(len(pm25_series) * 0.8)
 train = pm25_series[:train_size]
 test = pm25_series[train_size:]
 ```
 
-- Jumlah data latih: 632
-- Jumlah data uji: 158
+Data dibagi menjadi:
+- **Train**: 80% data
+- **Test**: 20% data
+- Metode ini menjaga urutan waktu (tidak diacak) agar model ARIMA dapat bekerja optimal.
 
 ## Modeling
 
-Model yang digunakan adalah **ARIMA(5,1,0)**  
-Parameter dipilih berdasarkan pengamatan terhadap grafik ACF dan PACF serta eksperimen.
-
-### Penjelasan ARIMA:
-
-- **AR (AutoRegressive)**: Menggunakan hubungan antara observasi saat ini dengan beberapa observasi sebelumnya (lag).
-- **I (Integrated)**: Melibatkan differencing untuk membuat data menjadi stasioner.
-- **MA (Moving Average)**: Menggunakan ketergantungan antara observasi dan error residual dari model sebelumnya.
-
-ARIMA cocok untuk time-series univariat seperti PM2.5 karena:
-- Tidak membutuhkan variabel eksternal
-- Dapat menangkap pola musiman dengan penyesuaian
-
-### Implementasi Model:
+### Model: ARIMA (AutoRegressive Integrated Moving Average)
 
 ```python
 from statsmodels.tsa.arima.model import ARIMA
 model = ARIMA(train, order=(5,1,0))
 model_fit = model.fit()
-forecast = model_fit.forecast(steps=len(test))
 ```
 
-### Prediksi 30 Hari ke Depan:
+### Penjelasan ARIMA(5,1,0):
+- `p = 5`: Menggunakan 5 nilai lag sebelumnya
+- `d = 1`: Melakukan differencing 1x untuk membuat data stasioner
+- `q = 0`: Tidak menggunakan moving average
 
-```python
-future_forecast = model_fit.forecast(steps=30)
-```
+### Kelebihan:
+- Simpel, cocok untuk dataset kecil
+- Bisa diinterpretasi
+- Tidak membutuhkan banyak fitur
+
+### Kekurangan:
+- Tidak cocok untuk banyak variabel
+- Tidak menangkap seasonality (tidak seperti SARIMA)
 
 ## Evaluation
 
-Model dievaluasi menggunakan dua metrik:
-
-- **MAE (Mean Absolute Error)**: Mengukur rata-rata kesalahan absolut
-- **RMSE (Root Mean Squared Error)**: Mengukur akar rata-rata kesalahan kuadrat
-
+### Evaluasi dengan MAE dan RMSE
 ```python
-from sklearn.metrics import mean_absolute_error, mean_squared_error
-mae = mean_absolute_error(test, forecast)
-rmse = np.sqrt(mean_squared_error(test, forecast))
+mae = mean_absolute_error(df_eval['actual'], df_eval['predicted'])
+rmse = np.sqrt(mean_squared_error(df_eval['actual'], df_eval['predicted']))
 ```
 
 ### Hasil:
-- MAE: 28.31
-- RMSE: 33.36
+- **MAE**: Mean Absolute Error — rata-rata kesalahan absolut
+- **RMSE**: Root Mean Squared Error — penalti lebih besar untuk kesalahan besar
+- Nilai yang kecil menunjukkan model prediktif baik
 
-### Interpretasi:
-- Model memiliki kesalahan rata-rata sebesar ~9.24 µg/m³
-- Cukup baik mengingat fluktuasi PM2.5 harian di Jakarta bisa sangat tinggi
+### Visualisasi
+Grafik perbandingan antara hasil prediksi vs aktual ditampilkan untuk validasi visual performa model.
 
-### Visualisasi:
+## Penutup
 
-Grafik hasil prediksi terhadap data aktual menunjukkan bahwa model mengikuti pola data dengan cukup baik, terutama tren dan lonjakan polusi.
+Model ARIMA berhasil membentuk baseline yang cukup baik untuk prediksi kadar PM2.5 harian di Jakarta. Dengan akurasi yang memadai, hasil ini bisa digunakan untuk mendukung pengambilan keputusan terkait kesehatan publik dan kebijakan lingkungan.
 
-## Kesimpulan
-
-Model ARIMA (5,1,0) berhasil digunakan untuk memprediksi kadar PM2.5 harian di Jakarta dengan akurasi yang cukup baik. Nilai MAE dan RMSE menunjukkan kesalahan yang dapat diterima untuk skenario baseline dan dapat dijadikan dasar dalam sistem peringatan dini kualitas udara.
-
-### Rencana Pengembangan:
-- Uji coba model SARIMA jika pola musiman tahunan ditemukan
-- Tambahkan variabel eksternal (suhu, kelembaban, volume lalu lintas)
-- Uji model deep learning (LSTM/GRU) untuk dataset lebih besar
-
-Model ini cocok digunakan dalam sistem pemantauan kualitas udara yang ringan dan mudah diimplementasikan.
